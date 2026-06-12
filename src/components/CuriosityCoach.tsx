@@ -82,9 +82,12 @@ export function CuriosityCoach() {
 
   return (
     <div className="dark min-h-screen w-full flex items-center justify-center p-4 sm:p-6">
-      <div className="w-full max-w-[420px] animate-scale-in">
+      <div className="w-full max-w-[420px] animate-scale-in relative">
+        {/* Ambient glow halo around card */}
+        <div aria-hidden className="pointer-events-none absolute -inset-10 -z-10 rounded-[3rem] bg-gradient-to-br from-primary/25 via-accent/20 to-transparent blur-3xl opacity-80" />
         {/* Browser-extension chrome */}
-        <div className="rounded-3xl border border-border bg-card/80 backdrop-blur-xl shadow-card overflow-hidden">
+        <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-2xl glow-soft overflow-hidden">
+
           {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/40">
             <div className="flex items-center gap-2">
