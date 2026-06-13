@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
   ArrowRight,
@@ -16,12 +17,25 @@ import {
   Check,
   RefreshCw,
   Flame,
+  Star,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { CoachApi } from "@/lib/api/coach-api";
+import { getOrCreateProfileId } from "@/lib/profile-id";
+import type { Mood, QuestRecommendation, UserProfile } from "@/types/coach";
 
-type Step = "welcome" | "checkin" | "sliders" | "topics" | "generating" | "quest";
+type Step =
+  | "welcome"
+  | "checkin"
+  | "sliders"
+  | "topics"
+  | "generating"
+  | "quest"
+  | "feedback";
 
 const TOPICS = [
   { id: "science", label: "Science", icon: Brain, hue: "from-cyan-400/30 to-blue-500/30" },
@@ -43,33 +57,82 @@ const MOODS = [
   { id: "restless", label: "Restless", emoji: "⚡" },
 ];
 
-const QUESTS: Record<string, { title: string; desc: string; time: string; tag: string }> = {
-  science: { title: "Decode a single cell", desc: "Spend 15 minutes mapping how a mitochondrion turns food into the energy reading these words.", time: "15 min", tag: "Micro deep-dive" },
-  tech: { title: "Reverse-engineer a daily app", desc: "Pick one app you opened today and sketch the 3 systems that make it feel instant.", time: "20 min", tag: "Builder's eye" },
-  space: { title: "Find your cosmic address", desc: "Trace your location from your chair → Earth → solar system → local arm of the galaxy.", time: "10 min", tag: "Perspective shift" },
-  art: { title: "Steal like a curator", desc: "Collect 5 images that share one invisible quality. Name the quality in a single word.", time: "25 min", tag: "Pattern hunt" },
-  nature: { title: "Notice one tree", desc: "Find a tree near you. Learn its name, its age range, and what visits it this season.", time: "15 min", tag: "Field study" },
-  culture: { title: "Borrow a worldview", desc: "Read one short essay from a culture you know little about. Note one belief that surprised you.", time: "20 min", tag: "Empathy rep" },
-  music: { title: "Hear a song's skeleton", desc: "Pick a favorite track. Listen 3 times, each focused on bass, rhythm, or melody only.", time: "12 min", tag: "Active listening" },
-  history: { title: "Time-travel to a Tuesday", desc: "Pick a year. Discover what an ordinary Tuesday looked like for a regular person living then.", time: "20 min", tag: "Story dive" },
-};
+const STEPS: Step[] = [
+  "welcome",
+  "checkin",
+  "sliders",
+  "topics",
+  "generating",
+  "quest",
+  "feedback",
+];
 
-export function CuriosityCoach() {
+export function CuriosityCoach({ api }: { api: CoachApi }) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("welcome");
-  const [mood, setMood] = useState<string | null>(null);
+  const [mood, setMood] = useState<Mood | null>(null);
   const [energy, setEnergy] = useState([60]);
   const [progress, setProgress] = useState([40]);
   const [topics, setTopics] = useState<string[]>([]);
+  const [quest, setQuest] = useState<QuestRecommendation | null>(null);
+  const [rating, setRating] = useState(4);
+  const [completed, setCompleted] = useState(true);
+  const [notes, setNotes] = useState("");
+
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: async () => {
+      const profileId = await getOrCreateProfileId();
+      return api.createOrGetProfile(profileId);
+    },
+  });
+
+  const questMutation = useMutation({
+    mutationFn: async () => {
+      const profileId = await getOrCreateProfileId();
+      const checkIn = await api.submitCheckIn({
+        profileId,
+        mood: mood!,
+        energy: energy[0],
+        progress: progress[0],
+        topics: topics as QuestRecommendation["primaryTopic"][],
+      });
+      return api.generateQuest({ profileId, checkInId: checkIn.id });
+    },
+    onSuccess: (result) => {
+      setQuest(result);
+      setStep("quest");
+    },
+  });
+
+  const feedbackMutation = useMutation({
+    mutationFn: async () => {
+      if (!quest) throw new Error("No quest to rate");
+      const profileId = await getOrCreateProfileId();
+      return api.storeFeedback({
+        profileId,
+        questId: quest.id,
+        rating,
+        completed,
+        notes: notes.trim() || undefined,
+      });
+    },
+    onSuccess: ({ profile }) => {
+      queryClient.setQueryData<UserProfile>(["profile"], profile);
+      resetFlow();
+      setStep("welcome");
+    },
+  });
 
   useEffect(() => {
-    if (step === "generating") {
-      const t = setTimeout(() => setStep("quest"), 2400);
-      return () => clearTimeout(t);
-    }
-  }, [step]);
+    if (step !== "generating") return;
+    if (questMutation.isPending || questMutation.isSuccess || questMutation.isError) return;
+    questMutation.mutate();
+  }, [step, questMutation.isPending, questMutation.isSuccess, questMutation.isError, questMutation.mutate]);
 
-  const stepIndex = ["welcome", "checkin", "sliders", "topics", "generating", "quest"].indexOf(step);
-  const progressPct = (stepIndex / 5) * 100;
+  const profile = profileQuery.data;
+  const stepIndex = STEPS.indexOf(step);
+  const progressPct = (stepIndex / (STEPS.length - 1)) * 100;
 
   const toggleTopic = (id: string) => {
     setTopics((prev) =>
@@ -77,18 +140,29 @@ export function CuriosityCoach() {
     );
   };
 
-  const primaryTopic = topics[0] ?? "science";
-  const quest = QUESTS[primaryTopic];
+  function resetFlow() {
+    setMood(null);
+    setTopics([]);
+    setQuest(null);
+    setRating(4);
+    setCompleted(true);
+    setNotes("");
+    questMutation.reset();
+    feedbackMutation.reset();
+  }
+
+  function handleRegenerate() {
+    setQuest(null);
+    questMutation.reset();
+    setStep("generating");
+  }
 
   return (
-    <div className="dark min-h-screen w-full flex items-center justify-center p-4 sm:p-6">
-      <div className="w-full max-w-[420px] animate-scale-in relative">
-        {/* Ambient glow halo around card */}
+    <div className="dark min-h-[600px] w-[420px] max-w-full flex items-stretch justify-center p-0 sm:p-0">
+      <div className="w-full animate-scale-in relative flex-1">
         <div aria-hidden className="pointer-events-none absolute -inset-10 -z-10 rounded-[3rem] bg-gradient-to-br from-primary/25 via-accent/20 to-transparent blur-3xl opacity-80" />
-        {/* Browser-extension chrome */}
         <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-2xl glow-soft overflow-hidden">
 
-          {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/40">
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-lg bg-gradient-primary grid place-items-center shadow-glow">
@@ -101,11 +175,12 @@ export function CuriosityCoach() {
             </div>
             <div className="flex items-center gap-1.5">
               <Flame className="h-3.5 w-3.5 text-warning" />
-              <span className="text-xs font-medium">7 day streak</span>
+              <span className="text-xs font-medium">
+                {profile ? `${profile.streak} day streak` : "…"}
+              </span>
             </div>
           </div>
 
-          {/* Progress */}
           <div className="h-1 bg-secondary/60">
             <div
               className="h-full bg-gradient-primary transition-all duration-500"
@@ -113,10 +188,9 @@ export function CuriosityCoach() {
             />
           </div>
 
-          {/* Body */}
           <div key={step} className="p-6 min-h-[460px] flex flex-col animate-fade-in">
             {step === "welcome" && (
-              <Welcome onNext={() => setStep("checkin")} />
+              <Welcome profile={profile} onNext={() => setStep("checkin")} />
             )}
 
             {step === "checkin" && (
@@ -148,17 +222,37 @@ export function CuriosityCoach() {
               />
             )}
 
-            {step === "generating" && <Generating />}
+            {step === "generating" && (
+              <Generating
+                error={questMutation.error}
+                onRetry={handleRegenerate}
+              />
+            )}
 
-            {step === "quest" && (
+            {step === "quest" && quest && (
               <Quest
                 quest={quest}
+                onAccept={() => setStep("feedback")}
+                onRegenerate={handleRegenerate}
                 onRestart={() => {
+                  resetFlow();
                   setStep("welcome");
-                  setMood(null);
-                  setTopics([]);
                 }}
-                onRegenerate={() => setStep("generating")}
+              />
+            )}
+
+            {step === "feedback" && quest && (
+              <Feedback
+                questTitle={quest.title}
+                rating={rating}
+                setRating={setRating}
+                completed={completed}
+                setCompleted={setCompleted}
+                notes={notes}
+                setNotes={setNotes}
+                isSubmitting={feedbackMutation.isPending}
+                onBack={() => setStep("quest")}
+                onSubmit={() => feedbackMutation.mutate()}
               />
             )}
           </div>
@@ -172,9 +266,13 @@ export function CuriosityCoach() {
   );
 }
 
-/* ---------- Sub-screens ---------- */
-
-function Welcome({ onNext }: { onNext: () => void }) {
+function Welcome({
+  profile,
+  onNext,
+}: {
+  profile: UserProfile | undefined;
+  onNext: () => void;
+}) {
   return (
     <div className="flex flex-col items-center text-center flex-1 justify-center">
       <div className="relative mb-6 animate-float">
@@ -190,9 +288,9 @@ function Welcome({ onNext }: { onNext: () => void }) {
 
       <div className="mt-8 grid grid-cols-3 gap-2 w-full">
         {[
-          { k: "Quests", v: "12" },
-          { k: "Streak", v: "7d" },
-          { k: "XP", v: "1,240" },
+          { k: "Quests", v: profile ? String(profile.totalQuests) : "—" },
+          { k: "Streak", v: profile ? `${profile.streak}d` : "—" },
+          { k: "XP", v: profile ? profile.xp.toLocaleString() : "—" },
         ].map((s) => (
           <div key={s.k} className="rounded-xl bg-secondary/60 border border-border p-3">
             <div className="text-base font-semibold">{s.v}</div>
@@ -210,7 +308,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
 
 function CheckIn({
   mood, setMood, onBack, onNext,
-}: { mood: string | null; setMood: (m: string) => void; onBack: () => void; onNext: () => void }) {
+}: { mood: Mood | null; setMood: (m: Mood) => void; onBack: () => void; onNext: () => void }) {
   return (
     <div className="flex flex-col flex-1">
       <StepHeader index={1} title="How are you arriving?" subtitle="Pick the mood closest to right now." />
@@ -220,7 +318,7 @@ function CheckIn({
           return (
             <button
               key={m.id}
-              onClick={() => setMood(m.id)}
+              onClick={() => setMood(m.id as Mood)}
               className={cn(
                 "group rounded-2xl border p-3 flex flex-col items-center gap-1 transition-all duration-200",
                 "hover:-translate-y-0.5 hover:border-primary/60",
@@ -339,7 +437,28 @@ function Topics({
   );
 }
 
-function Generating() {
+function Generating({
+  error,
+  onRetry,
+}: {
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  if (error) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <h2 className="mt-4 text-lg font-semibold">Couldn't generate your quest</h2>
+        <p className="mt-2 text-sm text-muted-foreground max-w-[280px]">
+          {error.message || "Something went wrong. Try again."}
+        </p>
+        <Button onClick={onRetry} className="mt-6 rounded-xl">
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center">
       <div className="relative">
@@ -351,11 +470,11 @@ function Generating() {
       </div>
       <h2 className="mt-8 text-xl font-semibold tracking-tight">Generating your quest…</h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-[280px]">
-        Mixing your mood, energy, and topics into something just unfamiliar enough.
+        Saving your check-in, building your profile context, and crafting a recommendation.
       </p>
 
       <div className="mt-6 w-full space-y-2">
-        {["Reading your check-in", "Scanning curious threads", "Tuning difficulty"].map((s, i) => (
+        {["Saving check-in", "Building LLM prompt", "Personalizing quest"].map((s, i) => (
           <div
             key={s}
             className="flex items-center gap-3 rounded-xl bg-secondary/40 border border-border px-3 py-2 text-xs"
@@ -371,11 +490,23 @@ function Generating() {
 }
 
 function Quest({
-  quest, onRestart, onRegenerate,
-}: { quest: { title: string; desc: string; time: string; tag: string }; onRestart: () => void; onRegenerate: () => void }) {
+  quest, onAccept, onRegenerate, onRestart,
+}: {
+  quest: QuestRecommendation;
+  onAccept: () => void;
+  onRegenerate: () => void;
+  onRestart: () => void;
+}) {
   return (
     <div className="flex flex-col flex-1">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-primary font-semibold">Your quest this week</div>
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-primary font-semibold">
+          Your quest this week
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {quest.source === "llm" ? "AI-crafted" : "Curated"}
+        </span>
+      </div>
 
       <div className="mt-3 relative rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-accent/10 p-5 overflow-hidden">
         <div className="absolute -top-12 -right-12 h-32 w-32 rounded-full bg-primary/20 blur-2xl" />
@@ -393,18 +524,18 @@ function Quest({
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         {[
           { k: "Reward", v: "+120 XP" },
-          { k: "Effort", v: "Low" },
+          { k: "Topic", v: quest.primaryTopic },
           { k: "Streak", v: "+1" },
         ].map((m) => (
           <div key={m.k} className="rounded-xl bg-secondary/50 border border-border py-2">
-            <div className="text-sm font-semibold">{m.v}</div>
+            <div className="text-sm font-semibold capitalize">{m.v}</div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{m.k}</div>
           </div>
         ))}
       </div>
 
       <div className="mt-auto pt-6 flex flex-col gap-2">
-        <Button className="h-11 rounded-xl font-semibold gap-2">
+        <Button onClick={onAccept} className="h-11 rounded-xl font-semibold gap-2">
           Accept quest <ArrowRight className="h-4 w-4" />
         </Button>
         <div className="grid grid-cols-2 gap-2">
@@ -420,7 +551,108 @@ function Quest({
   );
 }
 
-/* ---------- Bits ---------- */
+function Feedback({
+  questTitle,
+  rating,
+  setRating,
+  completed,
+  setCompleted,
+  notes,
+  setNotes,
+  isSubmitting,
+  onBack,
+  onSubmit,
+}: {
+  questTitle: string;
+  rating: number;
+  setRating: (v: number) => void;
+  completed: boolean;
+  setCompleted: (v: boolean) => void;
+  notes: string;
+  setNotes: (v: string) => void;
+  isSubmitting: boolean;
+  onBack: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex flex-col flex-1">
+      <StepHeader
+        index={4}
+        title="How was the quest?"
+        subtitle={`Quick feedback on "${questTitle}".`}
+      />
+
+      <div className="mt-6 space-y-5">
+        <div className="rounded-2xl border border-border bg-secondary/40 p-4">
+          <div className="text-sm font-medium mb-3">Rating</div>
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => setRating(n)}
+                className={cn(
+                  "h-10 w-10 rounded-xl border flex items-center justify-center transition-all",
+                  rating >= n
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border bg-background text-muted-foreground"
+                )}
+              >
+                <Star className={cn("h-4 w-4", rating >= n && "fill-current")} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-secondary/40 p-4">
+          <div className="text-sm font-medium mb-3">Did you complete it?</div>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Yes", value: true },
+              { label: "Not yet", value: false },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => setCompleted(opt.value)}
+                className={cn(
+                  "rounded-xl border py-2.5 text-sm font-medium transition-all",
+                  completed === opt.value
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border bg-background text-muted-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-secondary/40 p-4">
+          <div className="text-sm font-medium mb-3">Notes (optional)</div>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="What surprised you? What would you change?"
+            className="min-h-[80px] resize-none rounded-xl bg-background"
+            maxLength={500}
+          />
+        </div>
+      </div>
+
+      <div className="mt-auto pt-6 flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={onBack} className="h-11 w-11 rounded-xl shrink-0">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={onSubmit}
+          disabled={isSubmitting}
+          className="flex-1 h-11 rounded-xl gap-2 font-semibold"
+        >
+          {isSubmitting ? "Saving…" : "Save feedback"} <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function StepHeader({ index, title, subtitle }: { index: number; title: string; subtitle: string }) {
   return (

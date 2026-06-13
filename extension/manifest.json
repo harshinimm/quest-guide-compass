@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Curiosity Coach",
+  "version": "0.1.0",
+  "description": "Weekly mood check-in that turns your curiosity into a personalized quest.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Curiosity Coach"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": [
+    "http://localhost:5173/*",
+    "http://127.0.0.1:5173/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

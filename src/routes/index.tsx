@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { CuriosityCoach } from "@/components/CuriosityCoach";
+import { createCoachWebClient } from "@/lib/api/coach-api.web";
+
+const coachApi = createCoachWebClient();
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -10,5 +14,5 @@ export const Route = createFileRoute("/")({
       { property: "og:description", content: "Check in, pick your topics, get a quest. Stay curious every week." },
     ],
   }),
-  component: () => <CuriosityCoach />,
+  component: () => <CuriosityCoach api={coachApi} />,
 });

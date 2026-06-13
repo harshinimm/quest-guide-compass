@@ -20,6 +20,10 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Local coach data store
+.data/
+dist/extension/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
