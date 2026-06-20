@@ -19,6 +19,7 @@ import {
   Flame,
   Star,
   AlertCircle,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -173,11 +174,20 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 <div className="text-[10px] text-muted-foreground">Daily quest, smarter you</div>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+
+            {/* ── RIGHT SIDE: streak + settings ── */}
+            <div className="flex items-center gap-2">
               <Flame className="h-3.5 w-3.5 text-warning" />
               <span className="text-xs font-medium">
                 {profile ? `${profile.streak} day streak` : "…"}
               </span>
+              <button
+                onClick={() => chrome.runtime.openOptionsPage()}
+                className="h-7 w-7 rounded-lg bg-secondary grid place-items-center hover:bg-secondary/80 transition-colors"
+                title="Settings"
+              >
+                <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
             </div>
           </div>
 
