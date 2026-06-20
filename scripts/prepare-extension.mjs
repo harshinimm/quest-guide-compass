@@ -7,6 +7,8 @@ const outDir = resolve(root, "dist/extension");
 
 mkdirSync(outDir, { recursive: true });
 copyFileSync(resolve(root, "extension/manifest.json"), resolve(outDir, "manifest.json"));
+copyFileSync(resolve(root, "extension/popup.html"), resolve(outDir, "popup.html"));
+copyFileSync(resolve(root, "extension/settings.html"), resolve(outDir, "settings.html"));
 
 const iconsOut = resolve(outDir, "icons");
 mkdirSync(iconsOut, { recursive: true });
