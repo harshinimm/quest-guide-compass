@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -19,10 +18,12 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(__dirname, "extension/popup.html"),
+        settings: resolve(__dirname, "extension/settings.html"),
         background: resolve(__dirname, "extension/src/background.ts"),
       },
       output: {
-        entryFileNames: (chunk) => (chunk.name === "background" ? "background.js" : "assets/[name].js"),
+        entryFileNames: (chunk) =>
+          chunk.name === "background" ? "background.js" : "assets/[name].js",
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",
       },
