@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,10 +6,22 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = resolve(root, "dist/extension");
 
 mkdirSync(outDir, { recursive: true });
-copyFileSync(resolve(root, "extension/manifest.json"), resolve(outDir, "manifest.json"));
-copyFileSync(resolve(root, "extension/popup.html"), resolve(outDir, "popup.html"));
-copyFileSync(resolve(root, "extension/settings.html"), resolve(outDir, "settings.html"));
 
+// Copy manifest
+writeFileSync(
+  resolve(outDir, "manifest.json"),
+  readFileSync(resolve(root, "extension/manifest.json"), "utf-8")
+);
+
+// Copy the Vite-built HTML files (these have CSS/JS injected by Vite)
+// Vite outputs them to dist/extension/extension/ — we move them to the root
+const popupHtml = readFileSync(resolve(outDir, "extension/popup.html"), "utf-8");
+writeFileSync(resolve(outDir, "popup.html"), popupHtml);
+
+const settingsHtml = readFileSync(resolve(outDir, "extension/settings.html"), "utf-8");
+writeFileSync(resolve(outDir, "settings.html"), settingsHtml);
+
+// Copy icons
 const iconsOut = resolve(outDir, "icons");
 mkdirSync(iconsOut, { recursive: true });
 
