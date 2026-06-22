@@ -203,7 +203,7 @@ async function handleGenerateQuest(payload: unknown): Promise<QuestRecommendatio
     "checkins",
     "feedbacks",
   ]);
-  if (!apiKey) throw new Error("No Gemini API key found. Please set it in Settings.");
+  if (!apiKey) throw new Error("No Groq API key found. Please set it in Settings.");
 
   const currentCheckIn = checkins.find((c) => c.id === checkInId);
   if (!currentCheckIn) throw new Error("Check-in not found");
@@ -245,32 +245,29 @@ Respond ONLY with a valid JSON object in this exact shape, no markdown, no expla
 }
 `.trim();
 
-  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-  const response = await fetch(GEMINI_URL, {
+  const response = await fetch(GROQ_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 512 },
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 512,
     }),
   });
 
   if (!response.ok) {
     const err = await response.json();
-    throw new Error(err?.error?.message ?? `Gemini API error ${response.status}`);
+    throw new Error(err?.error?.message ?? `Groq API error ${response.status}`);
   }
 
   const data = await response.json();
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    throw new Error("Gemini returned invalid JSON — try regenerating");
-  }
-
+  const raw = data.choices?.[0]?.message?.content ?? "";
   const validated = questSchema.parse(parsed);
   const primaryTopic = (parsed as { primaryTopic: string }).primaryTopic;
 
