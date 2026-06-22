@@ -268,6 +268,7 @@ Respond ONLY with a valid JSON object in this exact shape, no markdown, no expla
 
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content ?? "";
+  const parsed = JSON.parse(raw);
   const validated = questSchema.parse(parsed);
   const primaryTopic = (parsed as { primaryTopic: string }).primaryTopic;
 

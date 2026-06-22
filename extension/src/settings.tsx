@@ -34,12 +34,16 @@ function Settings() {
     setTestError("");
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey.trim()}`;
-      const response = await fetch(url, {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey.trim()}`,
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: "Say hello in one word." }] }],
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: "Say hello in one word." }],
+          max_tokens: 10,
         }),
       });
 
@@ -80,9 +84,9 @@ function Settings() {
 
         <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold">Gemini API Key</h2>
+            <h2 className="text-sm font-semibold">Groq API Key</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Your key is stored locally and synced across your devices. Never sent anywhere except Google's API.
+              Your key is stored locally and synced across your devices. Never sent anywhere except Groq's API.
             </p>
           </div>
 
@@ -94,7 +98,7 @@ function Settings() {
               setSaved(false);
               setTestResult(null);
             }}
-            placeholder="AIza..."
+            placeholder="gsk_..."
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
           />
 
@@ -130,13 +134,13 @@ function Settings() {
           </div>
 
           <a
-            href="https://aistudio.google.com/app/apikey"
+            href="https://console.groq.com"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 text-xs text-primary hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
-            Get a free Gemini API key at Google AI Studio
+            Get a free Groq API key at console.groq.com
           </a>
         </div>
 
