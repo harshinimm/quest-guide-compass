@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { CheckCircle, KeyRound, AlertCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // @ts-ignore: Allow CSS side-effect import without type declarations
-import "./styles.css";
+import "../../src/styles.css";
 
 function Settings() {
   const [apiKey, setApiKey] = useState("");
