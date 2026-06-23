@@ -18,6 +18,10 @@ export const topicSchema = z.enum([
   "culture",
   "music",
   "history",
+  "economics",
+  "literature",
+  "philosophy",
+  "psychology",
 ]);
 
 export const questSchema = z.object({
@@ -25,6 +29,10 @@ export const questSchema = z.object({
   desc: z.string().min(1),
   time: z.string().min(1),
   tag: z.string().min(1),
+  articles: z.array(z.object({
+    title: z.string(),
+    url: z.string(),
+  })).optional(),
 });
 
 export const userProfileSchema = z.object({

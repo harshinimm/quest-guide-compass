@@ -19,6 +19,10 @@ const topicSchema = z.enum([
   "culture",
   "music",
   "history",
+  "economics",
+  "literature",
+  "philosophy",
+  "psychology",
 ]);
 
 const questSchema = z.object({
@@ -26,6 +30,10 @@ const questSchema = z.object({
   desc: z.string().min(1),
   time: z.string().min(1),
   tag: z.string().min(1),
+  articles: z.array(z.object({
+    title: z.string(),
+    url: z.string(),
+  })).optional(),
 });
 
 const userProfileSchema = z.object({
@@ -78,6 +86,7 @@ type StorageData = {
   checkins?: CheckIn[];
   quests?: QuestRecommendation[];
   feedbacks?: Feedback[];
+  activeQuest?: { quest: QuestRecommendation; assignedAt: string };
 };
 
 // ── Storage helpers ──────────────────────────────────────────────
@@ -124,10 +133,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 async function handleMessage(request: { type: string; payload?: unknown }) {
   switch (request.type) {
-    case "GET_PROFILE":    return handleGetProfile();
-    case "SUBMIT_CHECKIN": return handleSubmitCheckIn(request.payload);
-    case "GENERATE_QUEST": return handleGenerateQuest(request.payload);
-    case "STORE_FEEDBACK": return handleStoreFeedback(request.payload);
+    case "GET_PROFILE":        return handleGetProfile();
+    case "SUBMIT_CHECKIN":     return handleSubmitCheckIn(request.payload);
+    case "GENERATE_QUEST":     return handleGenerateQuest(request.payload);
+    case "STORE_FEEDBACK":     return handleStoreFeedback(request.payload);
+    case "GET_ACTIVE_QUEST":   return handleGetActiveQuest();
+    case "CLEAR_ACTIVE_QUEST": return handleClearActiveQuest();
     default: throw new Error(`Unknown message type: ${request.type}`);
   }
 }
@@ -147,6 +158,26 @@ async function handleGetProfile(): Promise<UserProfile> {
   };
   await storageSet({ profile: newProfile });
   return newProfile;
+}
+
+// ── GET_ACTIVE_QUEST ─────────────────────────────────────────────
+async function handleGetActiveQuest(): Promise<{ quest: QuestRecommendation; assignedAt: string } | null> {
+  const { activeQuest } = await storageGet(["activeQuest"]);
+  if (!activeQuest) return null;
+
+  const assignedAt = new Date(activeQuest.assignedAt);
+  const daysSince = Math.floor((Date.now() - assignedAt.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysSince >= 7) {
+    await storageSet({ activeQuest: undefined });
+    return null;
+  }
+
+  return activeQuest;
+}
+
+// ── CLEAR_ACTIVE_QUEST ───────────────────────────────────────────
+async function handleClearActiveQuest(): Promise<void> {
+  await storageSet({ activeQuest: undefined });
 }
 
 // ── SUBMIT_CHECKIN ───────────────────────────────────────────────
@@ -180,8 +211,8 @@ async function handleSubmitCheckIn(payload: unknown): Promise<CheckIn> {
 
   const newStreak =
     daysSinceLast === null ? 1
-    : daysSinceLast <= 1   ? profile.streak + 1
-    : 1;
+    : daysSinceLast > 1    ? 1
+    : profile.streak;
 
   const updatedProfile: UserProfile = {
     ...profile,
@@ -231,17 +262,23 @@ ${recentFeedbacks.length === 0
 
 Based on this, choose the best topic for their growth right now and generate a quest.
 The quest should include:
-- A specific article search query they should look up (not a generic topic, an actual search string)
+- A specific article search query they should look up
 - A journal prompt to reflect on what they learn
 - An estimated time commitment
+- 3 real article or research paper URLs relevant to the topic
 
 Respond ONLY with a valid JSON object in this exact shape, no markdown, no explanation:
 {
   "title": "short compelling quest title",
-  "desc": "2-3 sentences describing what to do — include the exact search query to use and the journal prompt",
+  "desc": "2-3 sentences describing what to do — include the exact search query to use and the journal prompt to reflect on",
   "time": "e.g. 20 mins",
   "tag": "one word category",
-  "primaryTopic": "one of: science, tech, space, art, nature, culture, music, history"
+  "primaryTopic": "one of: science, tech, space, art, nature, culture, music, history, economics, literature, philosophy, psychology",
+  "articles": [
+    { "title": "article or paper title or video", "url": "https://..." },
+    { "title": "article or paper title or video", "url": "https://..." },
+    { "title": "article or paper title or video", "url": "https://..." }
+  ]
 }
 `.trim();
 
@@ -257,7 +294,7 @@ Respond ONLY with a valid JSON object in this exact shape, no markdown, no expla
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.8,
-      max_tokens: 512,
+      max_tokens: 1024,
     }),
   });
 
@@ -287,13 +324,17 @@ Respond ONLY with a valid JSON object in this exact shape, no markdown, no expla
     desc: validated.desc,
     time: validated.time,
     tag: validated.tag,
+    articles: validated.articles,
     primaryTopic: primaryTopic as QuestRecommendation["primaryTopic"],
     source: "llm",
     createdAt: new Date().toISOString(),
   };
 
   const { quests = [] } = await storageGet(["quests"]);
-  await storageSet({ quests: [quest, ...quests].slice(0, 10) });
+  await storageSet({
+    quests: [quest, ...quests].slice(0, 10),
+    activeQuest: { quest, assignedAt: new Date().toISOString() },
+  });
 
   return quest;
 }
@@ -311,6 +352,9 @@ async function handleStoreFeedback(payload: unknown): Promise<{ feedback: Feedba
   const { profile, feedbacks = [] } = await storageGet(["profile", "feedbacks"]);
   if (!profile) throw new Error("Profile not found");
 
+  const hasJournalEntry = input.notes && input.notes.trim().length > 0;
+  const newStreak = hasJournalEntry ? profile.streak + 1 : profile.streak;
+
   const newFeedback: Feedback = {
     id: crypto.randomUUID(),
     profileId: input.profileId,
@@ -324,16 +368,24 @@ async function handleStoreFeedback(payload: unknown): Promise<{ feedback: Feedba
   const xpEarned =
     100 +
     (input.completed ? 50 : 0) +
-    (input.rating >= 4 ? 25 : 0);
+    (input.rating >= 4 ? 25 : 0) +
+    (hasJournalEntry ? 30 : 0);
 
   const updatedProfile: UserProfile = {
     ...profile,
     totalQuests: profile.totalQuests + 1,
     xp: profile.xp + xpEarned,
+    streak: newStreak,
   };
 
   const updatedFeedbacks = [newFeedback, ...feedbacks].slice(0, 10);
-  await storageSet({ profile: updatedProfile, feedbacks: updatedFeedbacks });
+
+  // Clear active quest when feedback is submitted
+  await storageSet({
+    profile: updatedProfile,
+    feedbacks: updatedFeedbacks,
+    activeQuest: undefined,
+  });
 
   return { feedback: newFeedback, profile: updatedProfile };
 }

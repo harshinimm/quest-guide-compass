@@ -20,6 +20,7 @@ import {
   Star,
   AlertCircle,
   Settings,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -47,6 +48,10 @@ const TOPICS = [
   { id: "culture", label: "Culture", icon: Globe2, hue: "from-amber-400/30 to-orange-500/30" },
   { id: "music", label: "Music", icon: Music, hue: "from-fuchsia-400/30 to-pink-500/30" },
   { id: "history", label: "History", icon: BookOpen, hue: "from-yellow-400/30 to-amber-500/30" },
+  { id: "economics", label: "Economics", icon: TrendingUp, hue: "from-green-400/30 to-emerald-500/30" },
+  { id: "literature", label: "Literature", icon: BookOpen, hue: "from-orange-400/30 to-red-500/30" },
+  { id: "philosophy", label: "Philosophy", icon: Brain, hue: "from-slate-400/30 to-gray-500/30" },
+  { id: "psychology", label: "Psychology", icon: Sparkles, hue: "from-purple-400/30 to-violet-500/30" },
 ];
 
 const MOODS = [
@@ -174,8 +179,6 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 <div className="text-[10px] text-muted-foreground">Daily quest, smarter you</div>
               </div>
             </div>
-
-            {/* ── RIGHT SIDE: streak + settings ── */}
             <div className="flex items-center gap-2">
               <Flame className="h-3.5 w-3.5 text-warning" />
               <span className="text-xs font-medium">
@@ -202,7 +205,6 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
             {step === "welcome" && (
               <Welcome profile={profile} onNext={() => setStep("checkin")} />
             )}
-
             {step === "checkin" && (
               <CheckIn
                 mood={mood}
@@ -211,7 +213,6 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 onNext={() => setStep("sliders")}
               />
             )}
-
             {step === "sliders" && (
               <Sliders
                 energy={energy[0]}
@@ -222,7 +223,6 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 onNext={() => setStep("topics")}
               />
             )}
-
             {step === "topics" && (
               <Topics
                 selected={topics}
@@ -231,14 +231,12 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 onNext={() => setStep("generating")}
               />
             )}
-
             {step === "generating" && (
               <Generating
                 error={questMutation.error}
                 onRetry={handleRegenerate}
               />
             )}
-
             {step === "quest" && quest && (
               <Quest
                 quest={quest}
@@ -250,7 +248,6 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
                 }}
               />
             )}
-
             {step === "feedback" && quest && (
               <Feedback
                 questTitle={quest.title}
@@ -343,7 +340,6 @@ function CheckIn({
           );
         })}
       </div>
-
       <NavRow onBack={onBack} onNext={onNext} disabled={!mood} />
     </div>
   );
@@ -359,7 +355,6 @@ function Sliders({
   return (
     <div className="flex flex-col flex-1">
       <StepHeader index={2} title="Calibrate the week" subtitle="Be honest — quests adapt to where you are." />
-
       <div className="mt-6 space-y-6">
         <SliderBlock
           icon={<Zap className="h-4 w-4" />}
@@ -376,7 +371,6 @@ function Sliders({
           hint={progress < 33 ? "Just started" : progress < 67 ? "Halfway there" : "Nearly complete"}
         />
       </div>
-
       <NavRow onBack={onBack} onNext={onNext} />
     </div>
   );
@@ -410,8 +404,7 @@ function Topics({
         title="What's pulling you in?"
         subtitle={`Pick up to 3 (${selected.length}/3 selected).`}
       />
-
-      <div className="mt-5 grid grid-cols-2 gap-2.5">
+      <div className="mt-5 grid grid-cols-2 gap-2.5 overflow-y-auto max-h-[320px] pr-1">
         {TOPICS.map((t) => {
           const Icon = t.icon;
           const active = selected.includes(t.id);
@@ -441,7 +434,6 @@ function Topics({
           );
         })}
       </div>
-
       <NavRow onBack={onBack} onNext={onNext} disabled={selected.length === 0} nextLabel="Generate quest" />
     </div>
   );
@@ -482,7 +474,6 @@ function Generating({
       <p className="mt-2 text-sm text-muted-foreground max-w-[280px]">
         Saving your check-in, building your profile context, and crafting a recommendation.
       </p>
-
       <div className="mt-6 w-full space-y-2">
         {["Saving check-in", "Building LLM prompt", "Personalizing quest"].map((s, i) => (
           <div
@@ -531,11 +522,32 @@ function Quest({
         </div>
       </div>
 
+      {/* ── Article links ── */}
+      {quest.articles && quest.articles.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-border bg-secondary/40 p-4 space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Recommended reads
+          </div>
+          {quest.articles.map((article, i) => (
+            <a
+              key={i}
+              href={article.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-start gap-2 text-xs text-primary hover:underline group"
+            >
+              <ExternalLink className="h-3 w-3 mt-0.5 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+              <span className="line-clamp-2">{article.title}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         {[
           { k: "Reward", v: "+120 XP" },
           { k: "Topic", v: quest.primaryTopic },
-          { k: "Streak", v: "+1" },
+          { k: "Streak", v: "+1 on journal" },
         ].map((m) => (
           <div key={m.k} className="rounded-xl bg-secondary/50 border border-border py-2">
             <div className="text-sm font-semibold capitalize">{m.v}</div>
@@ -636,15 +648,23 @@ function Feedback({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-secondary/40 p-4">
-          <div className="text-sm font-medium mb-3">Notes (optional)</div>
+        {/* ── Journal entry — required for streak ── */}
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm font-semibold">Journal entry</div>
+            <span className="text-[10px] text-primary font-medium uppercase tracking-wider">+1 streak if filled</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            What did you learn? What surprised you? How does it connect to your life?
+          </p>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="What surprised you? What would you change?"
-            className="min-h-[80px] resize-none rounded-xl bg-background"
+            placeholder="Write your reflection here — this is what your agent learns from next time…"
+            className="min-h-[100px] resize-none rounded-xl bg-background"
             maxLength={500}
           />
+          <div className="mt-1.5 text-right text-[10px] text-muted-foreground">{notes.length}/500</div>
         </div>
       </div>
 
@@ -657,7 +677,7 @@ function Feedback({
           disabled={isSubmitting}
           className="flex-1 h-11 rounded-xl gap-2 font-semibold"
         >
-          {isSubmitting ? "Saving…" : "Save feedback"} <ArrowRight className="h-4 w-4" />
+          {isSubmitting ? "Saving…" : "Save & complete"} <ArrowRight className="h-4 w-4" />
         </Button>
       </div>
     </div>
