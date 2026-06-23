@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Settings,
   ExternalLink,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -28,9 +29,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CoachApi } from "@/lib/api/coach-api";
 import { getOrCreateProfileId } from "@/lib/profile-id";
+import { getActiveQuest, clearActiveQuest } from "@/lib/api/coach-api.extension";
 import type { Mood, QuestRecommendation, UserProfile } from "@/types/coach";
 
 type Step =
+  | "loading"
   | "welcome"
   | "checkin"
   | "sliders"
@@ -64,6 +67,7 @@ const MOODS = [
 ];
 
 const STEPS: Step[] = [
+  "loading",
   "welcome",
   "checkin",
   "sliders",
@@ -75,15 +79,29 @@ const STEPS: Step[] = [
 
 export function CuriosityCoach({ api }: { api: CoachApi }) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<Step>("welcome");
+  const [step, setStep] = useState<Step>("loading");
   const [mood, setMood] = useState<Mood | null>(null);
   const [energy, setEnergy] = useState([60]);
   const [progress, setProgress] = useState([40]);
   const [topics, setTopics] = useState<string[]>([]);
   const [quest, setQuest] = useState<QuestRecommendation | null>(null);
+  const [activeQuestAssignedAt, setActiveQuestAssignedAt] = useState<string | null>(null);
   const [rating, setRating] = useState(4);
   const [completed, setCompleted] = useState(true);
   const [notes, setNotes] = useState("");
+
+  // ── Check for active quest on mount ──
+  useEffect(() => {
+    getActiveQuest().then((active) => {
+      if (active) {
+        setQuest(active.quest);
+        setActiveQuestAssignedAt(active.assignedAt);
+        setStep("quest");
+      } else {
+        setStep("welcome");
+      }
+    }).catch(() => setStep("welcome"));
+  }, []);
 
   const profileQuery = useQuery({
     queryKey: ["profile"],
@@ -107,6 +125,7 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
     },
     onSuccess: (result) => {
       setQuest(result);
+      setActiveQuestAssignedAt(new Date().toISOString());
       setStep("quest");
     },
   });
@@ -150,6 +169,7 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
     setMood(null);
     setTopics([]);
     setQuest(null);
+    setActiveQuestAssignedAt(null);
     setRating(4);
     setCompleted(true);
     setNotes("");
@@ -157,11 +177,23 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
     feedbackMutation.reset();
   }
 
-  function handleRegenerate() {
+  async function handleRegenerate() {
     setQuest(null);
+    setActiveQuestAssignedAt(null);
     questMutation.reset();
     setStep("generating");
   }
+
+  async function handleStartOver() {
+    await clearActiveQuest();
+    resetFlow();
+    setStep("welcome");
+  }
+
+  // ── Days remaining for active quest ──
+  const daysRemaining = activeQuestAssignedAt
+    ? Math.max(0, 7 - Math.floor((Date.now() - new Date(activeQuestAssignedAt).getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
 
   return (
     <div className="dark min-h-[600px] w-[420px] max-w-full flex items-stretch justify-center p-0 sm:p-0">
@@ -202,6 +234,11 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
           </div>
 
           <div key={step} className="p-6 min-h-[460px] flex flex-col animate-fade-in">
+            {step === "loading" && (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="h-8 w-8 rounded-full border-2 border-transparent border-t-primary border-r-accent animate-spin" />
+              </div>
+            )}
             {step === "welcome" && (
               <Welcome profile={profile} onNext={() => setStep("checkin")} />
             )}
@@ -240,12 +277,10 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
             {step === "quest" && quest && (
               <Quest
                 quest={quest}
+                daysRemaining={daysRemaining}
                 onAccept={() => setStep("feedback")}
                 onRegenerate={handleRegenerate}
-                onRestart={() => {
-                  resetFlow();
-                  setStep("welcome");
-                }}
+                onRestart={handleStartOver}
               />
             )}
             {step === "feedback" && quest && (
@@ -491,9 +526,10 @@ function Generating({
 }
 
 function Quest({
-  quest, onAccept, onRegenerate, onRestart,
+  quest, daysRemaining, onAccept, onRegenerate, onRestart,
 }: {
   quest: QuestRecommendation;
+  daysRemaining: number | null;
   onAccept: () => void;
   onRegenerate: () => void;
   onRestart: () => void;
@@ -504,9 +540,17 @@ function Quest({
         <div className="text-[11px] uppercase tracking-[0.18em] text-primary font-semibold">
           Your quest this week
         </div>
-        <span className="text-[10px] text-muted-foreground">
-          {quest.source === "llm" ? "AI-crafted" : "Curated"}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {daysRemaining !== null && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Calendar className="h-3 w-3" />
+              {daysRemaining}d left
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {quest.source === "llm" ? "AI-crafted" : "Curated"}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 relative rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-accent/10 p-5 overflow-hidden">
@@ -529,7 +573,7 @@ function Quest({
             Recommended reads
           </div>
           {quest.articles.map((article, i) => (
-            <a
+            
               key={i}
               href={article.url}
               target="_blank"
@@ -558,7 +602,7 @@ function Quest({
 
       <div className="mt-auto pt-6 flex flex-col gap-2">
         <Button onClick={onAccept} className="h-11 rounded-xl font-semibold gap-2">
-          Accept quest <ArrowRight className="h-4 w-4" />
+          Submit journal & complete <ArrowRight className="h-4 w-4" />
         </Button>
         <div className="grid grid-cols-2 gap-2">
           <Button variant="secondary" className="h-10 rounded-xl gap-2" onClick={onRegenerate}>
@@ -648,7 +692,6 @@ function Feedback({
           </div>
         </div>
 
-        {/* ── Journal entry — required for streak ── */}
         <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-semibold">Journal entry</div>
