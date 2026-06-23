@@ -268,7 +268,14 @@ Respond ONLY with a valid JSON object in this exact shape, no markdown, no expla
 
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content ?? "";
-  const parsed = JSON.parse(raw);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.trim());
+  } catch {
+    throw new Error("Groq returned invalid JSON — try regenerating");
+  }
+
   const validated = questSchema.parse(parsed);
   const primaryTopic = (parsed as { primaryTopic: string }).primaryTopic;
 
