@@ -573,7 +573,7 @@ function Quest({
             Recommended reads
           </div>
           {quest.articles.map((article, i) => (
-            
+            <a
               key={i}
               href={article.url}
               target="_blank"
