@@ -1,5 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { promises as fs } from "fs";
+import { join } from "path";
+
+// Minimal ambient declaration to satisfy TypeScript when @types/node isn't installed
+declare const process: { cwd: () => string };
+// If @types/node isn't installed, keep a minimal `process` declaration above.
+// Avoid augmenting the built-in "fs" module here because that can cause
+// "Invalid module name in augmentation" errors in some TypeScript setups.
 
 import type { CheckIn, Feedback, QuestRecommendation, UserProfile } from "@/types/coach";
 
@@ -29,7 +35,7 @@ function getStorePath() {
 
 async function readStore(): Promise<DataStore> {
   try {
-    const raw = await readFile(getStorePath(), "utf-8");
+    const raw = await fs.readFile(getStorePath(), "utf-8");
     return JSON.parse(raw) as DataStore;
   } catch {
     return structuredClone(memoryStore);
@@ -40,8 +46,8 @@ async function writeStore(store: DataStore): Promise<void> {
   memoryStore = store;
   try {
     const path = getStorePath();
-    await mkdir(join(process.cwd(), ".data"), { recursive: true });
-    await writeFile(path, JSON.stringify(store, null, 2), "utf-8");
+    await fs.mkdir(join(process.cwd(), ".data"), { recursive: true });
+    await fs.writeFile(path, JSON.stringify(store, null, 2), "utf-8");
   } catch {
     // File writes unavailable (e.g. Cloudflare Workers) — in-memory only.
   }
