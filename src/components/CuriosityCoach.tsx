@@ -90,17 +90,20 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
   const [completed, setCompleted] = useState(true);
   const [notes, setNotes] = useState("");
 
-  // ── Check for active quest on mount ──
+  // ── On mount: if there's an active quest, go straight to quest view and lock there ──
   useEffect(() => {
-    getActiveQuest().then((active) => {
-      if (active) {
-        setQuest(active.quest);
-        setActiveQuestAssignedAt(active.assignedAt);
-        setStep("quest");
-      } else {
-        setStep("welcome");
-      }
-    }).catch(() => setStep("welcome"));
+    getActiveQuest()
+      .then((active) => {
+        if (active) {
+          setQuest(active.quest);
+          setActiveQuestAssignedAt(active.assignedAt);
+          // Lock directly to quest — user must submit journal to leave
+          setStep("quest");
+        } else {
+          setStep("welcome");
+        }
+      })
+      .catch(() => setStep("welcome"));
   }, []);
 
   const profileQuery = useQuery({
@@ -142,8 +145,10 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
         notes: notes.trim() || undefined,
       });
     },
-    onSuccess: ({ profile }) => {
+    onSuccess: async ({ profile }) => {
       queryClient.setQueryData<UserProfile>(["profile"], profile);
+      // Clear the active quest from storage so next open shows welcome
+      await clearActiveQuest();
       resetFlow();
       setStep("welcome");
     },
@@ -192,15 +197,23 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
 
   // ── Days remaining for active quest ──
   const daysRemaining = activeQuestAssignedAt
-    ? Math.max(0, 7 - Math.floor((Date.now() - new Date(activeQuestAssignedAt).getTime()) / (1000 * 60 * 60 * 24)))
+    ? Math.max(
+        0,
+        7 -
+          Math.floor(
+            (Date.now() - new Date(activeQuestAssignedAt).getTime()) / (1000 * 60 * 60 * 24)
+          )
+      )
     : null;
 
   return (
     <div className="dark min-h-[600px] w-[420px] max-w-full flex items-stretch justify-center p-0 sm:p-0">
       <div className="w-full animate-scale-in relative flex-1">
-        <div aria-hidden className="pointer-events-none absolute -inset-10 -z-10 rounded-[3rem] bg-gradient-to-br from-primary/25 via-accent/20 to-transparent blur-3xl opacity-80" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -inset-10 -z-10 rounded-[3rem] bg-gradient-to-br from-primary/25 via-accent/20 to-transparent blur-3xl opacity-80"
+        />
         <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-2xl glow-soft overflow-hidden">
-
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/40">
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-lg bg-gradient-primary grid place-items-center shadow-glow">
@@ -269,10 +282,7 @@ export function CuriosityCoach({ api }: { api: CoachApi }) {
               />
             )}
             {step === "generating" && (
-              <Generating
-                error={questMutation.error}
-                onRetry={handleRegenerate}
-              />
+              <Generating error={questMutation.error} onRetry={handleRegenerate} />
             )}
             {step === "quest" && quest && (
               <Quest
@@ -349,8 +359,16 @@ function Welcome({
 }
 
 function CheckIn({
-  mood, setMood, onBack, onNext,
-}: { mood: Mood | null; setMood: (m: Mood) => void; onBack: () => void; onNext: () => void }) {
+  mood,
+  setMood,
+  onBack,
+  onNext,
+}: {
+  mood: Mood | null;
+  setMood: (m: Mood) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
   return (
     <div className="flex flex-col flex-1">
       <StepHeader index={1} title="How are you arriving?" subtitle="Pick the mood closest to right now." />
@@ -381,29 +399,49 @@ function CheckIn({
 }
 
 function Sliders({
-  energy, progress, setEnergy, setProgress, onBack, onNext,
+  energy,
+  progress,
+  setEnergy,
+  setProgress,
+  onBack,
+  onNext,
 }: {
-  energy: number; progress: number;
-  setEnergy: (v: number) => void; setProgress: (v: number) => void;
-  onBack: () => void; onNext: () => void;
+  energy: number;
+  progress: number;
+  setEnergy: (v: number) => void;
+  setProgress: (v: number) => void;
+  onBack: () => void;
+  onNext: () => void;
 }) {
   return (
     <div className="flex flex-col flex-1">
-      <StepHeader index={2} title="Calibrate the week" subtitle="Be honest — quests adapt to where you are." />
+      <StepHeader
+        index={2}
+        title="Calibrate the week"
+        subtitle="Be honest — quests adapt to where you are."
+      />
       <div className="mt-6 space-y-6">
         <SliderBlock
           icon={<Zap className="h-4 w-4" />}
           label="Energy"
           value={energy}
           onChange={setEnergy}
-          hint={energy < 33 ? "Low — gentle quest" : energy < 67 ? "Steady — focused quest" : "High — ambitious quest"}
+          hint={
+            energy < 33
+              ? "Low — gentle quest"
+              : energy < 67
+              ? "Steady — focused quest"
+              : "High — ambitious quest"
+          }
         />
         <SliderBlock
           icon={<TrendingUp className="h-4 w-4" />}
           label="Progress on last quest"
           value={progress}
           onChange={setProgress}
-          hint={progress < 33 ? "Just started" : progress < 67 ? "Halfway there" : "Nearly complete"}
+          hint={
+            progress < 33 ? "Just started" : progress < 67 ? "Halfway there" : "Nearly complete"
+          }
         />
       </div>
       <NavRow onBack={onBack} onNext={onNext} />
@@ -412,13 +450,25 @@ function Sliders({
 }
 
 function SliderBlock({
-  icon, label, value, onChange, hint,
-}: { icon: React.ReactNode; label: string; value: number; onChange: (v: number) => void; hint: string }) {
+  icon,
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  hint: string;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-secondary/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <span className="h-7 w-7 rounded-lg bg-primary/15 text-primary grid place-items-center">{icon}</span>
+          <span className="h-7 w-7 rounded-lg bg-primary/15 text-primary grid place-items-center">
+            {icon}
+          </span>
           {label}
         </div>
         <span className="text-sm font-semibold tabular-nums">{value}%</span>
@@ -430,8 +480,16 @@ function SliderBlock({
 }
 
 function Topics({
-  selected, toggle, onBack, onNext,
-}: { selected: string[]; toggle: (id: string) => void; onBack: () => void; onNext: () => void }) {
+  selected,
+  toggle,
+  onBack,
+  onNext,
+}: {
+  selected: string[];
+  toggle: (id: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
   return (
     <div className="flex flex-col flex-1">
       <StepHeader
@@ -526,7 +584,11 @@ function Generating({
 }
 
 function Quest({
-  quest, daysRemaining, onAccept, onRegenerate, onRestart,
+  quest,
+  daysRemaining,
+  onAccept,
+  onRegenerate,
+  onRestart,
 }: {
   quest: QuestRecommendation;
   daysRemaining: number | null;
@@ -558,19 +620,23 @@ function Quest({
         <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-accent/20 blur-2xl" />
         <div className="relative">
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">{quest.tag}</span>
-            <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">{quest.time}</span>
+            <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">
+              {quest.tag}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+              {quest.time}
+            </span>
           </div>
           <h2 className="mt-3 text-xl font-semibold tracking-tight leading-snug">{quest.title}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{quest.desc}</p>
         </div>
       </div>
 
-      {/* ── Article links ── */}
+      {/* ── Article links (Google Scholar search URLs — always work) ── */}
       {quest.articles && quest.articles.length > 0 && (
         <div className="mt-4 rounded-2xl border border-border bg-secondary/40 p-4 space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Recommended reads
+            Research rabbit holes
           </div>
           {quest.articles.map((article, i) => (
             <a
@@ -591,7 +657,7 @@ function Quest({
         {[
           { k: "Reward", v: "+120 XP" },
           { k: "Topic", v: quest.primaryTopic },
-          { k: "Streak", v: "+1 on journal" },
+          { k: "Streak", v: "write to earn" },
         ].map((m) => (
           <div key={m.k} className="rounded-xl bg-secondary/50 border border-border py-2">
             <div className="text-sm font-semibold capitalize">{m.v}</div>
@@ -640,6 +706,8 @@ function Feedback({
   onBack: () => void;
   onSubmit: () => void;
 }) {
+  const hasJournal = notes.trim().length > 0;
+
   return (
     <div className="flex flex-col flex-1">
       <StepHeader
@@ -692,10 +760,23 @@ function Feedback({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+        <div
+          className={cn(
+            "rounded-2xl border p-4 transition-colors",
+            hasJournal ? "border-primary/50 bg-primary/5" : "border-border bg-secondary/40"
+          )}
+        >
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-semibold">Journal entry</div>
-            <span className="text-[10px] text-primary font-medium uppercase tracking-wider">+1 streak if filled</span>
+            {/* Honest: streak only increments when journal is written */}
+            <span
+              className={cn(
+                "text-[10px] font-medium uppercase tracking-wider transition-colors",
+                hasJournal ? "text-primary" : "text-muted-foreground"
+              )}
+            >
+              {hasJournal ? "✓ streak will count" : "+streak if you write"}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
             What did you learn? What surprised you? How does it connect to your life?
@@ -707,12 +788,19 @@ function Feedback({
             className="min-h-[100px] resize-none rounded-xl bg-background"
             maxLength={500}
           />
-          <div className="mt-1.5 text-right text-[10px] text-muted-foreground">{notes.length}/500</div>
+          <div className="mt-1.5 text-right text-[10px] text-muted-foreground">
+            {notes.length}/500
+          </div>
         </div>
       </div>
 
       <div className="mt-auto pt-6 flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={onBack} className="h-11 w-11 rounded-xl shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          className="h-11 w-11 rounded-xl shrink-0"
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <Button
@@ -727,10 +815,20 @@ function Feedback({
   );
 }
 
-function StepHeader({ index, title, subtitle }: { index: number; title: string; subtitle: string }) {
+function StepHeader({
+  index,
+  title,
+  subtitle,
+}: {
+  index: number;
+  title: string;
+  subtitle: string;
+}) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-[0.18em] text-primary font-semibold">Step {index} of 3</div>
+      <div className="text-[11px] uppercase tracking-[0.18em] text-primary font-semibold">
+        Step {index} of 3
+      </div>
       <h2 className="mt-1 text-xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
     </div>
@@ -738,14 +836,31 @@ function StepHeader({ index, title, subtitle }: { index: number; title: string; 
 }
 
 function NavRow({
-  onBack, onNext, disabled, nextLabel = "Continue",
-}: { onBack: () => void; onNext: () => void; disabled?: boolean; nextLabel?: string }) {
+  onBack,
+  onNext,
+  disabled,
+  nextLabel = "Continue",
+}: {
+  onBack: () => void;
+  onNext: () => void;
+  disabled?: boolean;
+  nextLabel?: string;
+}) {
   return (
     <div className="mt-auto pt-6 flex items-center gap-2">
-      <Button variant="ghost" size="icon" onClick={onBack} className="h-11 w-11 rounded-xl shrink-0">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onBack}
+        className="h-11 w-11 rounded-xl shrink-0"
+      >
         <ArrowLeft className="h-4 w-4" />
       </Button>
-      <Button onClick={onNext} disabled={disabled} className="flex-1 h-11 rounded-xl gap-2 font-semibold">
+      <Button
+        onClick={onNext}
+        disabled={disabled}
+        className="flex-1 h-11 rounded-xl gap-2 font-semibold"
+      >
         {nextLabel} <ArrowRight className="h-4 w-4" />
       </Button>
     </div>

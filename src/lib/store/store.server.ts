@@ -121,16 +121,28 @@ export async function saveFeedbackRecord(feedback: Feedback): Promise<{
     throw new Error("Profile not found");
   }
 
-  const xpGain = feedback.completed ? 120 + feedback.rating * 10 : feedback.rating * 5;
-  profile.xp += xpGain;
+  // ── Streak: only increment when the user actually wrote a journal entry ──
+  // `feedback.notes` being non-empty is the signal that they truly engaged.
+  // `completed` alone is not enough — it defaults to true in the UI.
+  const wroteJournal = typeof feedback.notes === "string" && feedback.notes.trim().length > 0;
 
-  if (feedback.completed) {
+  if (wroteJournal) {
     const lastCheckIn = profile.lastCheckInAt ? new Date(profile.lastCheckInAt) : null;
     const now = new Date(feedback.createdAt);
+    // Allow up to 8 days to keep streak alive (7-day quest + 1 day grace)
     const withinStreakWindow =
-      lastCheckIn !== null && now.getTime() - lastCheckIn.getTime() <= 8 * 24 * 60 * 60 * 1000;
+      lastCheckIn !== null &&
+      now.getTime() - lastCheckIn.getTime() <= 8 * 24 * 60 * 60 * 1000;
     profile.streak = withinStreakWindow ? profile.streak + 1 : 1;
   }
+  // If no journal entry: streak stays exactly where it was — no reset, no increment.
+
+  // ── XP: full reward only if journal was written, partial otherwise ──
+  const xpGain = wroteJournal
+    ? 120 + feedback.rating * 10  // journal bonus included
+    : feedback.rating * 5;        // minimal XP for completing without journaling
+
+  profile.xp += xpGain;
 
   store.profiles[feedback.profileId] = profile;
   await writeStore(store);
